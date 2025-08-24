@@ -18,7 +18,7 @@
 #include <stdlib.h>   // rand(), srand()
 
 // ===================== PARÁMETROS PRINCIPALES =====================
-#define TRAIN_ON_BOARD 1   // 1: entrena y luego imprime pesos | 0: solo inferencia
+#define TRAIN_ON_BOARD 0   // 1: entrena y luego imprime pesos | 0: solo inferencia
 
 // --- Red y entrenamiento ---
 const int   H       = 16;      // # neuronas ocultas (sube si quieres más precisión)
@@ -45,10 +45,10 @@ static float b1 = 0;  // bias salida
 #else
 // Modo solo inferencia: pega aquí los pesos entrenados e inmutables (const).
 // EJEMPLO (rellena con tus pesos reales):
-static const float W0[H] = { /* pega aquí H valores */ };
-static const float b0[H] = { /* pega aquí H valores */ };
-static const float W1[H] = { /* pega aquí H valores */ };
-static const float b1    = 0.0f;
+static const float W0[16] = { -2.242205f, 1.080316f, -0.524318f, 0.401677f, -0.508689f, 0.681906f, -0.396343f, 1.134409f, -0.387459f, -0.396157f, -0.012345f, -0.956068f, 1.914582f, -2.229915f, 0.396376f, -1.138070f };
+static const float b0[16] = { 0.283488f, -0.545148f, -0.023614f, -0.187147f, 0.090871f, 0.028695f, 0.156926f, -0.853016f, 0.109525f, 0.085076f, 0.057581f, 0.321676f, -3.775601f, 2.402312f, -0.051009f, 0.889783f };
+static const float W1[16] = { -1.741876f, -0.531684f, -0.100296f, 0.581034f, -0.353649f, -0.364444f, -0.635743f, -0.822812f, -0.344030f, -0.581307f, -0.007802f, 0.234926f, 1.651513f, 1.075741f, 0.657285f, 0.968343f };
+static const float b1 = -0.152316f;
 #endif
 
 // ===================== UTILIDADES DE LA RED =====================
@@ -238,6 +238,19 @@ static void tune_on_board(){
 void setup() {
   Serial.begin(115200);
   while(!Serial){}   // espera a puerto serie listo
+  // Lo mismo del Notebook
+  Serial.println("Sanity check:");
+  float tests[] = {0.0f, PI/4, PI/2, 3*PI/4, PI, 3*PI/2};
+  for (int i=0;i<6;i++){
+    float x = tests[i];
+    float y_nn = nn_predict(x);
+    float y_rf = sinf(x);
+    Serial.print("x="); Serial.print(x,5);
+    Serial.print(" nn="); Serial.print(y_nn,6);
+    Serial.print(" sin="); Serial.print(y_rf,6);
+    Serial.print(" err="); Serial.println(y_nn - y_rf,6);
+}
+
 
 #if TRAIN_ON_BOARD
   Serial.println("Entrenando MLP 1-16-1 para sin(x) en Nano 33 BLE...");
@@ -259,3 +272,4 @@ void loop() {
   //   Serial.println(nn_predict(x), 6);
   // }
 }
+
