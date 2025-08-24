@@ -2,6 +2,8 @@
 # 1. ¿Qué tipo de red es?
 
  Es una **red neuronal multicapa (MLP, Multi-Layer Perceptron)**.
+ 
+![MLP EJEMPLO](https://aiml.com/wp-content/uploads/2023/12/mlp.png)
 
 * Tiene **una entrada** (el ángulo en radianes, `x`).
 * Una **capa oculta** con **8 neuronas** y función de activación **tanh**.
