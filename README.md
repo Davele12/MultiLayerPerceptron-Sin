@@ -1,199 +1,141 @@
+# 🧠 MLP-Sine Approximation (Arduino Nano 33 BLE)
 
-# 1. ¿Qué tipo de red es?
+Este proyecto implementa una **Red Neuronal Artificial (ANN)** del tipo **Perceptrón Multicapa (MLP)** en un **Arduino Nano 33 BLE** para **aproximar la función seno** en el rango `[-2π, 2π]`.
 
- Es una **red neuronal multicapa (MLP, Multi-Layer Perceptron)**.
- 
-![MLP EJEMPLO](https://aiml.com/wp-content/uploads/2023/12/mlp.png)
-
-* Tiene **una entrada** (el ángulo en radianes, `x`).
-* Una **capa oculta** con **8 neuronas** y función de activación **tanh**.
-* Una **capa de salida** con **1 neurona** y salida **lineal**.
-
-En notación de arquitectura: **\[1 → 8 → 1]**.
-Esto significa: 1 neurona de entrada → 8 ocultas → 1 salida.
+La red entrena directamente en la placa (**TinyML on-board training**) y permite visualizar sus resultados en el **Serial Plotter**.
 
 ---
 
-# 2. ¿Cuál es la entrada y la salida?
+## 1. Tipo de red y cómo funciona
 
-* **Entrada**: un número real `x` en radianes (ejemplo: `1.5708` ≈ π/2).
-* **Salida**: un número real que intenta aproximar `sin(x)`.
+La arquitectura usada es un **MLP 1 → H → 1**:
 
-La idea es que la red aprenda la función:
+- **Entrada (1):** el ángulo en radianes `x`, normalizado como `x_norm = x / π`.
+- **Capa oculta (H neuronas):** aplica una transformación lineal + función de activación **tanh**:
+  \[
+  z_j = W0_j \cdot x_{norm} + b0_j
+  \]
+  \[
+  a_j = \tanh(z_j)
+  \]
+- **Capa de salida (1):** combina las activaciones ocultas linealmente:
+  \[
+  \hat{y} = b1 + \sum_{j=1}^H W1_j \cdot a_j
+  \]
 
-$$
-f(x) \approx \sin(x)
-$$
-
----
-
-# 3. ¿Cómo están compuestas las capas?
-
-## a) Capa de entrada
-
-* **Neurona**: recibe el ángulo en radianes.
-* **Normalización**: el código multiplica `x` por `1/π` (`X_SCALE`).
-  Esto hace que los valores estén en un rango más pequeño (entre -2 y 2 aprox.), para que la red no se sature.
-
-$$
-x_{norm} = \frac{x}{\pi}
-$$
+Así, la salida \(\hat{y}\) intenta aproximar a \(\sin(x)\).
 
 ---
 
-## b) Capa oculta (8 neuronas con `tanh`)
+## 2. Capas, neuronas y pesos
 
-Cada neurona hace:
+- **Entrada → oculta (W0, b0):**
+  - Cada neurona oculta tiene un peso `W0_j` y un bias `b0_j`.
+  - Esto define cómo cada neurona “ve” la entrada (escala y desplazamiento).
+- **Oculta → salida (W1, b1):**
+  - Cada activación oculta `a_j` se multiplica por `W1_j`.
+  - Todas las contribuciones se suman junto con un bias `b1`.
 
-$$
-a_j = \tanh(W0_j \cdot x_{norm} + b0_j)
-$$
-
-* `W0_j` es el peso de la neurona j (multiplica la entrada).
-* `b0_j` es el bias (desplaza la curva).
-* `tanh` es la activación, una función que va de -1 a 1 y es suave.
-
-Esto crea 8 curvas en forma de “S” desplazadas y escaladas.
-
----
-
-## c) Capa de salida (1 neurona lineal)
-
-La salida se calcula como:
-
-$$
-y = b1 + \sum_{j=1}^{8} W1_j \cdot a_j
-$$
-
-* `a_j` son las salidas de la capa oculta.
-* `W1_j` son los pesos que combinan esas salidas.
-* `b1` es el bias de salida.
-* No hay activación aquí → es lineal.
-
-Así, sumando y restando esas curvas tanh, la red puede construir algo parecido a una onda seno.
+**Resumen de parámetros:**
+- `W0[H]`: pesos de entrada a oculta.
+- `b0[H]`: bias de cada neurona oculta.
+- `W1[H]`: pesos de oculta a salida.
+- `b1`: bias de salida.
 
 ---
 
-# 4. ¿Cómo se entrena?
+## 3. Métodos de entrenamiento y ajuste
 
-Cuando `TRAIN_ON_BOARD = 1`, el código activa el entrenamiento.
-El proceso es:
-
-### a) Generar dataset
-
-El código crea 256 puntos `Xbuf[i]` uniformemente entre $-2π, 2π$.
-Para cada punto, guarda la respuesta real:
-
-$$
-Ybuf[i] = \sin(Xbuf[i])
-$$
-
----
-
-### b) Forward pass (predicción)
-
-La red calcula sus predicciones `Yhatbuf[i]` para cada `Xbuf[i]` con los pesos actuales.
-
----
-
-### c) Calcular error (loss function)
-
-Usa el **error cuadrático medio (MSE)**:
-
-$$
-MSE = \frac{1}{N} \sum_i (Yhat_i - Y_i)^2
-$$
-
----
-
-### d) Backpropagation
-
-Para mejorar los pesos, calcula cómo afecta cada peso al error.
-
-* **Capa de salida**:
-  El error se propaga directo porque es lineal.
-
-$$
-\delta_{out} = (Yhat - Y)
-$$
-
-* **Capa oculta**:
-  Usa la derivada de `tanh`:
-
-$$
-\frac{d}{dz}\tanh(z) = 1 - \tanh(z)^2
-$$
-
-Entonces:
-
-$$
-\delta_j = \delta_{out} \cdot W1_j \cdot (1 - a_j^2)
-$$
+- **Inicialización:** Xavier/Glorot, que distribuye los pesos iniciales en un rango apropiado para `tanh`.
+- **Dataset:** se generan puntos aleatorios `(x, sin(x))` en `[-2π, 2π]`.
+- **Forward pass:** la red calcula `y_hat` a partir de `x`.
+- **Loss:** se mide el error cuadrático medio (MSE):
+  \[
+  L = \frac{1}{2}(\hat{y} - y)^2
+  \]
+- **Backpropagation:** aplica la **regla de la cadena** para obtener los gradientes:
+  - Salida:
+    \[
+    \frac{\partial L}{\partial W1_j} = (\hat{y}-y)\,a_j
+    \]
+    \[
+    \frac{\partial L}{\partial b1} = \hat{y}-y
+    \]
+  - Oculta:
+    \[
+    \delta_j = (\hat{y}-y)\,W1_j\,(1-a_j^2)
+    \]
+    \[
+    \frac{\partial L}{\partial W0_j} = \delta_j \cdot x_{norm}
+    \]
+    \[
+    \frac{\partial L}{\partial b0_j} = \delta_j
+    \]
+- **Optimización:** Mini-batch SGD con tasa de aprendizaje `LR` y decaimiento opcional.
 
 ---
 
-### e) Actualización (SGD)
+## 4. Resultados esperados
 
-Con cada delta, actualiza los pesos:
+- Tras unas **2000 épocas** con `H=16`, la red logra aproximar la función seno con error medio cuadrático bajo (MSE ≈ 0.01–0.02).  
+- En el **Serial Plotter** se visualizan dos curvas:
+  - `nn:` → predicción de la red neuronal.
+  - `sin:` → valor real de la función seno.
 
-$$
-W \gets W - \eta \cdot \nabla W
-$$
-
-$$
-b \gets b - \eta \cdot \nabla b
-$$
-
-donde $\eta = 0.01$ es la tasa de aprendizaje (`LR`).
-
-Esto se repite `EPOCHS` veces (ejemplo 800).
+Al entrenar, la curva `nn` comienza lejos de `sin`, pero con cada época se ajusta hasta coincidir casi perfectamente.
 
 ---
 
-### f) Al terminar
+## 5. Ejemplo numérico: forward + backprop
 
-Imprime por Serial los **nuevos pesos y biases** en formato C.
-Tú puedes copiarlos al bloque `#else` para dejar fija la red y cambiar `TRAIN_ON_BOARD = 0`.
-Así ya no entrena, solo predice rápido.
+Supongamos una red **1 → 2 → 1** (para simplificar cálculos).
 
----
+- Entrada: \(x = \pi/2\).  
+- Normalización: \(x_{norm} = 0.5\).  
+- Objetivo: \(y = \sin(\pi/2) = 1.0\).
 
-# 5. ¿Qué representa cada arreglo?
+### Forward
+- Neurona 1:  
+  \(z_1 = 1.0 \cdot 0.5 + 0 = 0.5,\; a_1 = \tanh(0.5) \approx 0.462\)
+- Neurona 2:  
+  \(z_2 = -1.0 \cdot 0.5 + 0 = -0.5,\; a_2 = \tanh(-0.5) \approx -0.462\)
+- Salida:  
+  \(\hat{y} = 1.0 \cdot a_1 + 1.0 \cdot a_2 = 0.0\)
 
-* `W0[8]`: pesos de la capa de entrada a la oculta.
-* `b0[8]`: bias de cada neurona oculta.
-* `W1[8]`: pesos de la capa oculta a la salida.
-* `b1`: bias de salida.
+Error: \(E = \hat{y} - y = -1.0\).
 
----
+### Backprop
+- Gradiente en salida:  
+  \(g_{W1} = E \cdot a,\; g_{b1} = E\)
+- Gradiente en oculta:  
+  \(\delta_j = E \cdot W1_j \cdot (1-a_j^2)\)  
+  \(g_{W0_j} = \delta_j \cdot x_{norm},\; g_{b0_j} = \delta_j\)
 
-# 6. Resumen conceptual
+### Actualización (η=0.1)
+- \(W1_1 \to 1.046\), \(W1_2 \to 0.954\)  
+- \(W0_1 \to 1.039\), \(W0_2 \to -0.961\)  
+- \(b0_1, b0_2 \to 0.079\), \(b1 \to 0.1\)
 
-* **Tipo de red**: perceptrón multicapa (MLP).
-* **Entradas**: ángulos (radianes).
-* **Salidas**: valores aproximados de `sin(x)`.
-* **Capas**:
-
-  * 1 entrada
-  * 1 oculta de 8 neuronas con `tanh`
-  * 1 salida lineal
-* **Entrenamiento**:
-
-  * Dataset generado internamente (`sin(x)`)
-  * Optimización por descenso de gradiente estocástico (SGD)
-  * Error: cuadrático medio (MSE).
-* **Uso**:
-
-  * Entrenar (`TRAIN_ON_BOARD=1`) → obtener nuevos pesos.
-  * Fijar pesos (`TRAIN_ON_BOARD=0`) → inferencia ligera y rápida.
+En el siguiente paso, la predicción sube a ≈0.297 → más cerca de 1.0.
 
 ---
 
-# 7. Intuición final
+## 6. Cómo usar este proyecto
 
-* Cada neurona oculta genera una “ondita” tipo `tanh`.
-* Sumando varias de esas onditas con distintos pesos y signos, la salida forma una **onda sinusoidal**.
-* Con pocas neuronas (8) ya es suficiente para aproximar el seno con error bajo.
-* Esto mismo se usa en IA para aproximar funciones muchísimo más complejas (voz, imágenes, etc).
+1. Configura en el código:
+   - `TRAIN_ON_BOARD = 1` para entrenar en la placa.  
+   - Ajusta `H`, `EPOCHS`, `LR` según la precisión deseada.
+2. Carga el sketch en el **Arduino Nano 33 BLE**.
+3. Abre **Herramientas → Serial Plotter** a **115200 baudios**.
+4. Observa la curva `nn` acercarse a `sin`.
+5. Cuando estés conforme, copia los pesos impresos y fija `TRAIN_ON_BOARD = 0` para usar la red en modo inferencia.
 
+---
 
+## 7. Aplicaciones
+
+- Ejemplo educativo de **TinyML**.  
+- Demostración de cómo una **red neuronal** puede aproximar funciones matemáticas.  
+- Base para extender a otras funciones o incluso sensores reales (ejemplo: procesar datos de IMU en el Nano 33 BLE).
+
+---
